@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - "docs/**"
 
 env:
   PROJECT_ID: midyear-acre-475515-d0
