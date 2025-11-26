@@ -1,7 +1,67 @@
-name: 'Continuous Delivery'
+name: Continuous Delivery
 
 on:
-  ...
+  push:
+    branches:
+      - main
+
+env:
+  PROJECT_ID: midyear-acre-475515-d0
+  REGION: us-central1
+  REPO_NAME: flight-delay-repo
+  SERVICE_NAME: flight-delay-api
+  IMAGE_NAME: flight-delay-api
 
 jobs:
-  ...
+  deploy:
+    name: Deploy to Cloud Run
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 1. Authenticate to Google Cloud
+      # Uses the Service Account Key you stored in GitHub Secrets
+      - name: Google Auth
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_CREDENTIALS }}
+
+      # 2. Set up Cloud SDK
+      # This installs 'gcloud' and configures it to use the credentials above
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      # 3. Configure Docker Authentication for Artifact Registry
+      # This allows 'docker push' to write to private registry
+      - name: Configure Docker Auth
+        run: |
+          gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      # 4. Build and Push Docker Image
+      # Build for linux/amd64 to ensure compatibility with Cloud Run
+      - name: Build and Push Container
+        run: |
+          # Define the full image path with tags
+          IMAGE_TAG=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_NAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          LATEST_TAG=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_NAME }}/${{ env.IMAGE_NAME }}:latest
+
+          echo "Building image: $IMAGE_TAG"
+
+          # Build the image specifically for Cloud Run architecture (amd64)
+          docker build --platform linux/amd64 -t $IMAGE_TAG -t $LATEST_TAG .
+
+          # Push both the specific commit tag (for rollback) and 'latest'
+          docker push $IMAGE_TAG
+          docker push $LATEST_TAG
+
+      # 5. Deploy to Cloud Run
+      # This updates the existing service with the new image
+      - name: Deploy to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ${{ env.SERVICE_NAME }}
+          image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_NAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          region: ${{ env.REGION }}
