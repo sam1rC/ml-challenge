@@ -1,0 +1,45 @@
+name: Continuous Integration
+
+# Trigger the workflow on:
+# 1. Any push to any branch (to catch errors early in development)
+# 2. Pull Requests specifically targeting main or develop
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["main", "develop"]
+
+jobs:
+  test_pipeline:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Check out the repository code
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2. Set up Python 3.10 (matching Dockerfile)
+      # enable pip caching to speed up subsequent runs
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: "pip"
+
+      # 3. Install Dependencies
+      # Install both production and test requirements
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -f requirements-test.txt ]; then pip install -r requirements-test.txt; fi
+
+      # 4. Run Model Tests
+      # This validates the Data Science logic, metrics, and preprocessing
+      - name: Run Model Tests
+        run: make model-test
+
+      # 5. Run API Tests
+      # This validates the FastAPI endpoints, inputs, and prediction response
+      - name: Run API Tests
+        run: make api-test
